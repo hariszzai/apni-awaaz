@@ -1,0 +1,9 @@
+.env
+certs/
+.claude/
+__pycache__/
+outputs/
+# Personal voice data: recordings and speaker embeddings
+data/
+voice_test/my_voice.wav
+voice_test/outputs/

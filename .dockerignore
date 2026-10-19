@@ -1,0 +1,11 @@
+# Keep secrets and personal data out of the image
+.env
+data/
+certs/
+outputs/
+voice_test/
+test_audio/
+__pycache__/
+.vscode/
+.claude/
+*.pyc

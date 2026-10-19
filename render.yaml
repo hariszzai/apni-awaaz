@@ -1,0 +1,18 @@
+# Render Blueprint: deploys Apni Awaaz from this repo on Render's free tier.
+# Render builds the Dockerfile; the server listens on Render's $PORT (--public mode).
+services:
+  - type: web
+    name: apni-awaaz
+    runtime: docker
+    plan: free
+    region: singapore # closest Render region to India
+    healthCheckPath: /api/config
+    envVars:
+      - key: GNANI_API_KEY
+        sync: false # Render asks you for it during setup
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true # random, made once and then kept: it signs saved voices
+      - key: GNANI_DAILY_LIMIT
+        value: "1500"

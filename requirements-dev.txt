@@ -1,0 +1,4 @@
+# Local extras: the voice_test scripts
+-r requirements.txt
+requests>=2.32       # voice_test/test_clone.py
+sounddevice>=0.5     # voice_test/record_voice.py
