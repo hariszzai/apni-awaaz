@@ -80,12 +80,14 @@ def wav(audio: bytes) -> Response:
     return Response(audio, media_type="audio/wav", headers={"Cache-Control": "private, max-age=86400"})
 
 
-@app.get("/")
+# HEAD too: uptime monitors (which keep the free host awake) often check with HEAD,
+# and a 405 would show the site as down
+@app.api_route("/", methods=["GET", "HEAD"])
 async def index():
     return FileResponse(STATIC / "index.html")
 
 
-@app.get("/api/config")
+@app.api_route("/api/config", methods=["GET", "HEAD"])
 async def config():
     return {
         "languages": LANGUAGES,
