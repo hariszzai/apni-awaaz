@@ -224,12 +224,16 @@ let field = null; // live particle background
 let currentSample = null; // the "Hear it" clip playing now
 
 let roomId = null;
+let solo = false; // one phone shared by two people, each with their own button
+let pendingRejoin = null; // the room this tab was in when the page reloaded
 let socket = null;
 let myPid = null;
 let leaving = false;
 let participants = [];
 let talking = false;
+let talkingAs = "me"; // on one phone: whose button is held, "me" or "guest"
 let otherSpeaking = null; // name of the other person while they hold their button
+let speakingPulse = null;
 let talkTimer = null;
 let badgeTimer = null;
 const turns = new Map();
@@ -239,6 +243,8 @@ const turns = new Map();
 function show(view) {
   document.body.classList.remove("view-landing", "view-setup", "view-room");
   document.body.classList.add(`view-${view}`);
+  // Pulling down in the room would reload the page (Android Chrome) and drop the conversation
+  document.documentElement.classList.toggle("in-room", view === "room");
   for (const screen of $$(".screen")) screen.hidden = screen.id !== `screen-${view}`;
   closeMenu();
   closeSheet();
@@ -356,7 +362,7 @@ for (const button of $$("[data-scroll]")) {
   button.addEventListener("click", () => {
     closeMenu();
     if (!document.body.classList.contains("view-landing")) {
-      if (roomId) leaveRoom();
+      if (roomId || pendingRejoin) leaveRoom();
       else goHome();
     }
     document.getElementById(button.dataset.scroll)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -382,9 +388,9 @@ function goHome() {
 }
 
 // Start or join; sends people through setup first if they haven't introduced themselves
-function primaryAction() {
+function primaryAction(onePhone = false) {
   const code = inviteCode();
-  const action = code ? () => joinRoom(code) : startRoom;
+  const action = onePhone ? () => startRoom(true) : code ? () => joinRoom(code) : () => startRoom();
   if (!profile?.name) {
     afterSetup = action;
     openSetup();
@@ -397,6 +403,7 @@ for (const el of $$("[data-action]")) {
   el.addEventListener("click", () => {
     const action = el.dataset.action;
     if (action === "primary") primaryAction();
+    else if (action === "solo") primaryAction(true);
     else if (action === "voice") { afterSetup = null; openSetup(); }
     else if (action === "home") { afterSetup = null; goHome(); }
   });
@@ -404,7 +411,7 @@ for (const el of $$("[data-action]")) {
 
 $("#logo").addEventListener("click", (e) => {
   e.preventDefault();
-  if (roomId) leaveRoom();
+  if (roomId || pendingRejoin) leaveRoom();
   else goHome();
 });
 
@@ -695,7 +702,7 @@ $("#save-profile").addEventListener("click", () => {
 
 // ---------- room ----------
 
-async function startRoom() {
+async function startRoom(onePhone = false) {
   // Mic first: no point creating a room nobody can talk in
   try {
     await ensureMic();
@@ -704,13 +711,30 @@ async function startRoom() {
     return;
   }
   try {
-    const response = await fetch("/api/rooms", { method: "POST" });
+    const response = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ solo: onePhone }),
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail);
     const { room_id } = await response.json();
-    enterRoom(room_id);
-  } catch {
-    toast("Couldn't reach the server. Is it still running?");
+    enterRoom(room_id, { onePhone });
+  } catch (error) {
+    toast(error?.message || "Couldn't reach the server. Is it still running?");
   }
 }
+
+// On one phone, the other person's language (remembered for next time)
+function guestLanguage() {
+  const saved = store.get("aa_guest_language");
+  if (config.languages[saved] && saved !== profile.language) return saved;
+  return profile.language === "hi-IN" ? "ta-IN" : "hi-IN";
+}
+
+$("#guest-language").addEventListener("change", (e) => {
+  store.set("aa_guest_language", e.target.value);
+  socket?.send(JSON.stringify({ type: "guest_language", language: e.target.value }));
+});
 
 async function joinRoom(code) {
   try {
@@ -722,22 +746,55 @@ async function joinRoom(code) {
   enterRoom(code);
 }
 
-function enterRoom(code) {
+// The room screen, before connecting: shared by entering a room and coming back after a reload
+function openRoomScreen(code, onePhone) {
   roomId = code;
+  solo = onePhone;
   leaving = false;
   myPid = null;
   participants = [];
+  otherSpeaking = null;
   turns.clear();
   $("#transcript").replaceChildren();
   $("#room-code").textContent = code;
-  $("#room-chip").hidden = false;
-  history.replaceState(null, "", `?room=${code}`);
+  $("#room-chip").hidden = solo; // nobody else joins a one-phone room
+  document.body.classList.toggle("solo", solo);
+  if (solo) fillSelect($("#guest-language"), config.languages, guestLanguage());
   show("room");
-  renderRoom();
-  connect();
 }
 
-function connect() {
+// rejoin: this tab was in the room already, so the server may recreate it after a restart
+function enterRoom(code, { onePhone = false, rejoin = false } = {}) {
+  pendingRejoin = null;
+  openRoomScreen(code, onePhone);
+  tabStore.set("aa_room", { code, solo: onePhone }); // survives a reload of this tab
+  // A one-phone room has nothing to share, so the address stays plain
+  history.replaceState(null, "", onePhone ? "/" : `?room=${code}`);
+  renderRoom();
+  connect(rejoin);
+}
+
+// After a reload in a room: phones only allow sound after a tap, so ask for one
+function offerRejoin(saved) {
+  openRoomScreen(saved.code, Boolean(saved.solo));
+  roomId = null;
+  pendingRejoin = saved;
+  renderRoom();
+}
+
+$("#rejoin").addEventListener("click", async () => {
+  const saved = pendingRejoin;
+  if (!saved) return;
+  try {
+    await ensureMic();
+  } catch (error) {
+    toast(micError(error));
+    return;
+  }
+  enterRoom(saved.code, { onePhone: Boolean(saved.solo), rejoin: true });
+});
+
+function connect(rejoin = false) {
   const protocol = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${protocol}://${location.host}/ws/${roomId}`);
   ws.binaryType = "arraybuffer";
@@ -753,6 +810,8 @@ function connect() {
       mode: profile.mode,
       voice: profile.voice,
       cloned_voice: myVoice,
+      rejoin,
+      solo: solo ? { name: "Guest", language: $("#guest-language").value } : undefined,
     }));
   };
   ws.onmessage = (event) => {
@@ -767,16 +826,22 @@ function connect() {
     participants = [];
     renderRoom();
     $("#talk-status").textContent = "Connection lost. Reconnecting…";
-    setTimeout(() => { if (socket === ws && !leaving) connect(); }, 2000);
+    setTimeout(() => { if (socket === ws && !leaving) connect(true); }, 2000);
   };
 }
 
 function leaveRoom() {
   leaving = true;
   roomId = null;
+  pendingRejoin = null;
+  otherSpeaking = null;
+  updateSpeakingGlow();
   socket?.close();
   socket = null;
+  tabStore.remove("aa_room");
   $("#room-chip").hidden = true;
+  solo = false;
+  document.body.classList.remove("solo");
   history.replaceState(null, "", "/");
   goHome();
 }
@@ -813,7 +878,8 @@ function handleMessage(message) {
       updateTurn(message.turn_id, { speaker: message.speaker, state: message.state, message: message.message });
       break;
     case "speaking":
-      if (message.speaker !== myPid) {
+      // On one phone both people are right here, holding their own buttons
+      if (message.speaker !== myPid && !solo) {
         otherSpeaking = message.on ? message.speaker_name : null;
         renderRoom();
       }
@@ -843,24 +909,46 @@ function showPlayingBadge(name) {
   badge.hidden = false;
 }
 
+// While the other person holds their button: moving bars, and the orb breathing with them
+function updateSpeakingGlow() {
+  const on = Boolean(otherSpeaking);
+  document.body.classList.toggle("other-speaking", on);
+  $("#speaking-wave").hidden = !on;
+  if (on && !speakingPulse) {
+    speakingPulse = setInterval(() => field?.pulse(0.25 + Math.random() * 0.35), 140);
+  } else if (!on && speakingPulse) {
+    clearInterval(speakingPulse);
+    speakingPulse = null;
+  }
+}
+
 function renderRoom() {
   const me = participants.find((p) => p.pid === myPid);
   const other = participants.find((p) => p.pid !== myPid);
 
-  const people = participants.map((p) => {
+  // On one phone the other person's chip is the "They speak" picker instead
+  const people = participants.filter((p) => !(solo && p.guest)).map((p) => {
     const li = document.createElement("li");
     const dot = document.createElement("span");
     dot.className = "dot";
     li.append(dot, `${p.pid === myPid ? "You" : p.name} · ${p.language_name}`);
     return li;
   });
-  if (!other) {
+  if (!other && !solo && !pendingRejoin) {
     const li = document.createElement("li");
     li.className = "waiting";
     li.textContent = "Waiting for the other person…";
     people.push(li);
   }
   $("#people").replaceChildren(...people);
+  $(".guest-language").hidden = !solo || Boolean(pendingRejoin);
+
+  const guestButton = $("#talk-guest");
+  guestButton.hidden = !solo || Boolean(pendingRejoin);
+  $("#talk").hidden = Boolean(pendingRejoin);
+  $("#rejoin").hidden = !pendingRejoin;
+  $("#talk").querySelector(".talk-who").textContent = solo ? `You · ${languageName(profile.language)}` : "";
+  guestButton.querySelector(".talk-who").textContent = solo ? `Guest · ${languageName($("#guest-language").value)}` : "";
 
   const mode = me?.mode || profile.mode;
   for (const button of $$(".mode-toggle button")) {
@@ -869,20 +957,29 @@ function renderRoom() {
   $("#mode-hint").textContent = mode === "my_voice"
     ? "They hear your words translated, in your own cloned voice."
     : `They hear an expressive AI voice (${profile.voice}) that carries your emotion.`;
+  if (pendingRejoin) {
+    $("#talk-status").textContent = "The page reloaded. Tap to carry on the conversation.";
+    updateSpeakingGlow();
+    return;
+  }
 
   const ready = Boolean(me && other && socket?.readyState === WebSocket.OPEN);
   $("#talk").disabled = !ready;
+  guestButton.disabled = !ready;
   if (!other) otherSpeaking = null;
+  updateSpeakingGlow();
   const status = $("#talk-status");
   status.classList.toggle("speaking", Boolean(otherSpeaking));
   if (!talking) {
     status.textContent = !me
       ? "Connecting…"
-      : otherSpeaking
-        ? `${otherSpeaking} is speaking…`
-        : other
-          ? `Speak ${languageName(profile.language)}. ${other.name} hears ${other.language_name}.`
-          : "Tap Invite and send the link to the person you want to talk to.";
+      : solo
+        ? `${languageName(profile.language)} on the left, ${languageName($("#guest-language").value)} on the right.`
+        : otherSpeaking
+          ? `${otherSpeaking} is speaking…`
+          : other
+            ? `Speak ${languageName(profile.language)}. ${other.name} hears ${other.language_name}.`
+            : "Tap Invite and send the link to the person you want to talk to.";
   }
 }
 
@@ -946,17 +1043,20 @@ function updateTurn(turnId, data) {
 
 // ---------- push to talk ----------
 
-const talkButton = $("#talk");
+const talkButtons = { me: $("#talk"), guest: $("#talk-guest") };
 
-function startTalk(event) {
-  if (talking || talkButton.disabled || !recorder || socket?.readyState !== WebSocket.OPEN) return;
+// as: whose button, "me" or (on one phone) "guest"
+function startTalk(event, as = "me") {
+  const talkButton = talkButtons[as];
+  if (talking || talkButton.disabled || talkButton.hidden || !recorder || socket?.readyState !== WebSocket.OPEN) return;
   event?.preventDefault();
   if (event?.pointerId !== undefined) talkButton.setPointerCapture(event.pointerId);
   // No await here: a quick release during an await would leave the mic recording
   if (audioCtx.state === "suspended") audioCtx.resume();
   talking = true;
+  talkingAs = as;
   // Stream while talking: Prisma transcribes as you speak, so the reply comes sooner
-  socket.send(JSON.stringify({ type: "talk_start" }));
+  socket.send(JSON.stringify({ type: "talk_start", as: as === "guest" ? "guest" : undefined }));
   const resampler = new StreamResampler(audioCtx.sampleRate);
   recorder.start((block) => {
     field?.setEnergy(rms(block) * 7); // the orb above the room moves with your voice
@@ -964,14 +1064,14 @@ function startTalk(event) {
     if (pcm.length && socket?.readyState === WebSocket.OPEN) socket.send(pcm.buffer);
   });
   talkButton.classList.add("recording");
-  talkButton.querySelector(".talk-label").textContent = "Listening… let go to send";
+  talkButton.querySelector(".talk-label").textContent = solo ? "Listening… let go" : "Listening… let go to send";
   $("#talk-status").textContent = "";
-  const timer = $("#talk-timer");
+  const timer = talkButton.querySelector(".talk-timer");
   talkTimer = setInterval(() => {
     const left = Math.ceil(config.max_turn_seconds - recorder.seconds);
     timer.classList.toggle("ending", left <= 10);
     timer.textContent = left <= 10 ? `${left}s left` : `${Math.floor(recorder.seconds)}s`;
-    if (left <= 0) stopTalk(); // SRS FR-7: Prisma REST takes up to 60 s
+    if (left <= 0) stopTalk(); // SRS FR-7: the Prisma REST fallback takes up to 30 s
   }, 200);
 }
 
@@ -979,9 +1079,10 @@ async function stopTalk() {
   if (!talking) return;
   talking = false;
   clearInterval(talkTimer);
+  const talkButton = talkButtons[talkingAs];
   talkButton.classList.remove("recording");
   talkButton.querySelector(".talk-label").textContent = "Hold to talk";
-  $("#talk-timer").textContent = "";
+  talkButton.querySelector(".talk-timer").textContent = "";
   const seconds = recorder.seconds;
   await recorder.stop(); // flushes the last block to the socket
   field?.setEnergy(0);
@@ -998,11 +1099,14 @@ async function stopTalk() {
   renderRoom();
 }
 
-talkButton.addEventListener("pointerdown", startTalk);
-for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
-  talkButton.addEventListener(type, stopTalk);
+for (const [as, button] of Object.entries(talkButtons)) {
+  button.addEventListener("pointerdown", (e) => startTalk(e, as));
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    // Only the held button ends the turn: on one phone the other one may be touched too
+    button.addEventListener(type, () => { if (talkingAs === as) stopTalk(); });
+  }
+  button.addEventListener("contextmenu", (e) => e.preventDefault());
 }
-talkButton.addEventListener("contextmenu", (e) => e.preventDefault());
 
 // Space bar works as push-to-talk on a laptop
 function isSpaceTalk(e) {
@@ -1224,6 +1328,13 @@ async function init() {
   }
   if (profile && !hasVoice) profile.mode = "expressive";
   if (profile && !config.languages[profile.language]) profile = null;
+  // A reload in the middle of a conversation (pull to refresh, or the phone closing the
+  // page in the background) comes back to that conversation, not the landing page
+  const saved = tabStore.get("aa_room");
+  if (saved && profile?.name && /^[A-Z0-9]{6}$/.test(saved.code || "") && (saved.solo || inviteCode() === saved.code)) {
+    offerRejoin(saved);
+    return;
+  }
   goHome();
 }
 

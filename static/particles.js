@@ -1,6 +1,6 @@
 // Live particle field behind the page (replaces the looping hero video).
 //
-// Lit 3D spheres, silver with warm orange accents, form a "voice orb" that morphs into a
+// Lit 3D spheres, silver with accents that drift through saffron, pink, violet and blue, form a "voice orb" that morphs into a
 // different shape for each section: two orbs talking, a waveform, Indian scripts, a ring.
 // Warm dust drifts behind them. Particles move away from the cursor or a finger, a click
 // sends a shockwave, and the orb pulses with voice energy. Plain Canvas 2D, no libraries.
@@ -60,6 +60,23 @@ function sphereSprite(stops, size = 64) {
   return canvas;
 }
 
+// The flowing accent, matching --flow in style.css: saffron, pink, violet, blue, and back
+const FLOW = [[255, 153, 51], [255, 79, 154], [163, 91, 255], [77, 141, 255]];
+const FLOW_STEPS = 24; // sprites per loop: enough that the colour change looks smooth
+const FLOW_SECONDS = 22; // one trip round the colours
+
+function flowColor(t) {
+  const x = (((t % 1) + 1) % 1) * FLOW.length;
+  const a = FLOW[Math.floor(x)], b = FLOW[(Math.floor(x) + 1) % FLOW.length], f = x - Math.floor(x);
+  return a.map((v, i) => Math.round(v + (b[i] - v) * f));
+}
+
+function shade([r, g, b], k) {
+  // k > 0 mixes towards white, k < 0 towards black
+  const mix = (v) => Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k));
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+
 function glowSprite(rgb, size = 32) {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
@@ -117,11 +134,17 @@ export function createParticleField(canvas) {
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const narrowQuery = matchMedia("(max-width: 900px)");
 
-  const sprites = [
-    sphereSprite([[0, "#ffffff"], [0.22, "#eef0f5"], [0.62, "#9da3ae"], [0.9, "#4a4e57"], [1, "#24262b"]]),
-    sphereSprite([[0, "#fff1e6"], [0.25, "#ffb27a"], [0.65, "#f26b1d"], [0.92, "#7a2c08"], [1, "#2e1003"]]),
-  ];
-  const dustSprites = [glowSprite("255,244,232"), glowSprite("255,150,80")];
+  const silver = sphereSprite([[0, "#ffffff"], [0.22, "#eef0f5"], [0.62, "#9da3ae"], [0.9, "#4a4e57"], [1, "#24262b"]]);
+  const silverDust = glowSprite("255,244,232");
+  // Coloured particles step through the flow colours; each one is offset by where it sits
+  // on the orb, so the colours travel round it in bands
+  const flowSprites = [], flowDust = [];
+  for (let s = 0; s < FLOW_STEPS; s++) {
+    const c = flowColor(s / FLOW_STEPS);
+    flowSprites.push(sphereSprite([[0, shade(c, 0.88)], [0.25, shade(c, 0.45)], [0.65, shade(c, 0)], [0.92, shade(c, -0.55)], [1, shade(c, -0.82)]]));
+    flowDust.push(glowSprite(c.join(",")));
+  }
+  const flowStep = (offset) => Math.floor(((time / FLOW_SECONDS + offset) % 1) * FLOW_STEPS);
 
   // Fewer particles on small screens keeps phones smooth
   const area = innerWidth * innerHeight;
@@ -159,7 +182,7 @@ export function createParticleField(canvas) {
     // put all the big particles at one end of the waveform or ring.
     base[i] = 1.3 + Math.pow(Math.random(), 3.2) * 6.5;
     rate[i] = 0.03 + u2[i] * 0.055; // different speeds make morphs look organic
-    kind[i] = u3[i] > 0.86 ? 1 : 0; // ~14% orange
+    kind[i] = u3[i] > 0.82 ? 1 : 0; // ~18% coloured
     px[i] = dx[i] * 3;
     py[i] = dy[i] * 3;
     pz[i] = dz[i] * 3;
@@ -413,7 +436,7 @@ export function createParticleField(canvas) {
       const s = dS[i] * persp * 2.2;
       const twinkle = 0.55 + 0.45 * Math.sin(time * (0.8 + dV[i] * 20) + i);
       ctx.globalAlpha = alpha * 0.32 * twinkle * persp;
-      ctx.drawImage(dustSprites[dK[i]], x - s, y - s, s * 2, s * 2);
+      ctx.drawImage(dK[i] ? flowDust[flowStep(i / DUST)] : silverDust, x - s, y - s, s * 2, s * 2);
     }
 
     // Spheres, far to near so nearer ones overlap farther ones
@@ -426,7 +449,7 @@ export function createParticleField(canvas) {
       const x = sx[i], y = sy[i];
       if (x < -s || y < -s || x > width + s || y > height + s) continue;
       ctx.globalAlpha = sa[i] * alpha;
-      ctx.drawImage(sprites[kind[i]], x - s / 2, y - s / 2, s, s);
+      ctx.drawImage(kind[i] ? flowSprites[flowStep(theta[i] / TAU + 0.5)] : silver, x - s / 2, y - s / 2, s, s);
     }
     ctx.globalAlpha = 1;
   }

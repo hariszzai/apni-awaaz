@@ -25,7 +25,7 @@ OUT_DIR = ROOT / "outputs" / "turns"
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("audio", type=Path, help="speaker's audio clip (WAV, MP3, OGG, FLAC, AAC, M4A; up to 60 s)")
+    p.add_argument("audio", type=Path, help="speaker's audio clip (WAV, MP3, OGG, FLAC, AAC, M4A; up to 30 s)")
     p.add_argument("--from", dest="src", required=True, choices=LANGUAGES, help="language the speaker uses")
     p.add_argument("--to", dest="tgt", required=True, choices=LANGUAGES, help="language the listener hears")
     p.add_argument("--mode", choices=MODES, default="my_voice")

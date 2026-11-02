@@ -12,7 +12,7 @@ import httpx
 import websockets
 
 BASE_URL = "https://api.vachana.ai"
-STT_MAX_SECONDS = 60  # Prisma REST limit; longer audio needs the streaming endpoint
+STT_MAX_SECONDS = 30  # Prisma REST limit (docs, Nov 2026); longer audio needs the streaming endpoint
 
 # Prisma realtime STT (tested 19 Oct): it splits speech into segments on silence and
 # transcribes each one while the user is still talking. There is no end-of-audio message,
@@ -255,7 +255,7 @@ class GnaniClient:
         await self._http.aclose()
 
     async def transcribe(self, audio: bytes, filename: str, language_code: str) -> str:
-        """Prisma STT (REST, audio up to 60 s)."""
+        """Prisma STT (REST, audio up to 30 s)."""
         self._spend()
         async with self._slot:
             r = await self._http.post(

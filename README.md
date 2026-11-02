@@ -15,6 +15,8 @@ short_description: Speak your language. Be heard in theirs, in your own voice.
 
 Two people who share no language talk through their phones. Each speaks their own language (Hinglish is fine). The other hears it in *their* language, in the speaker's **own cloned voice**, or in an expressive voice that carries laughs, whispers and excitement.
 
+Sitting together? **Talk on one phone**: each person gets their own hold-to-talk button, and the phone answers in the other person's language. No link to share, and each turn costs the same as on two phones.
+
 Built for the **Great Indian AI Internship Challenge** on Gnani AI's speech models. #GnaniAI #GreatIndianAIInternshipChallenge
 
 ## How it works
@@ -26,7 +28,9 @@ Built for the **Great Indian AI Internship Challenge** on Gnani AI's speech mode
 | The translation is spoken in your cloned voice | **Gnani voice cloning** (`vachana-vc-v1`) |
 | …or in an expressive voice with emotion tags | **Gnani Timbre v3.0**, streamed |
 
-Measured from releasing the button to hearing the translation: about **1.7–2.2 s** in Expressive mode and **4.5–5 s** in My Voice mode (cloned speech can't stream yet).
+Measured from releasing the button to hearing the translation: about **1.7–2.3 s** in Expressive mode and **3.4–5.2 s** in My Voice mode (cloned speech can't stream yet). A turn lasts up to 28 s: if live transcription fails, the app falls back to Prisma REST, which takes up to 30 s of audio.
+
+If the page reloads mid-conversation (pull to refresh, or the phone closing a background tab), it offers **Tap to rejoin** and carries on in the same room, even after a server restart.
 
 **Privacy:** nothing is cloned without ticking the consent box; a cloned voice is kept in the user's own browser (signed by the server so only voices made here are accepted); every translated voice is labelled "AI voice" while it plays; one tap deletes it.
 

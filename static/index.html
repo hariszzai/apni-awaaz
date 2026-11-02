@@ -65,6 +65,7 @@
             <p id="lede" class="lede appear appear--soft" style="--d:0.82s">Live voice translation across 10 Indian languages. They hear your words in their language, spoken in your own cloned voice.</p>
             <div class="hero-actions">
               <button type="button" id="cta-primary" class="btn btn-solid btn-hero appear appear--btn" style="--d:0.96s" data-action="primary">Start a conversation</button>
+              <button type="button" id="cta-solo" class="btn btn-ghost btn-hero appear appear--side" style="--d:1.04s" data-action="solo">Talk on one phone</button>
               <button type="button" id="cta-voice" class="btn btn-ghost btn-hero appear appear--side" style="--d:1.10s" data-action="voice">Set up my voice</button>
             </div>
           </div>
@@ -298,9 +299,10 @@
       <section class="section cta" id="start" data-formation="cta">
         <div class="cta-inner reveal">
           <h2>Your voice. <em>Their language.</em></h2>
-          <p class="section-lede">Start a conversation and send the link. That's it.</p>
+          <p class="section-lede">Start a conversation and send the link. Sitting together? Share one phone.</p>
           <div class="hero-actions">
             <button type="button" class="btn btn-solid btn-hero" data-action="primary">Start a conversation</button>
+            <button type="button" class="btn btn-ghost btn-hero" data-action="solo">Talk on one phone</button>
             <button type="button" class="btn btn-ghost btn-hero" data-sheet="join">Join with code</button>
           </div>
         </div>
@@ -388,6 +390,9 @@
     <section id="screen-room" class="screen app-screen room" hidden>
       <div class="room-bar">
         <ul id="people" class="people"></ul>
+        <label class="guest-language" hidden>They speak
+          <select id="guest-language"></select>
+        </label>
         <div class="room-actions">
           <button type="button" id="share" class="btn btn-ghost btn-sm">Invite</button>
           <button type="button" id="leave" class="btn btn-ghost btn-sm">Leave</button>
@@ -404,11 +409,22 @@
 
       <div class="talk">
         <div id="playing-badge" class="badge badge-live" hidden></div>
+        <div id="speaking-wave" class="speaking-wave" hidden aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
         <p id="talk-status" class="muted small center" aria-live="polite"></p>
-        <button type="button" id="talk" class="btn btn-solid talk-button" disabled>
-          <span class="talk-label">Hold to talk</span>
-          <span id="talk-timer" class="talk-timer"></span>
-        </button>
+        <div class="talk-buttons">
+          <button type="button" id="talk" class="btn btn-solid talk-button" disabled>
+            <span class="talk-who"></span>
+            <span class="talk-label">Hold to talk</span>
+            <span class="talk-timer"></span>
+          </button>
+          <!-- One phone: the other person's button -->
+          <button type="button" id="talk-guest" class="btn btn-solid talk-button" disabled hidden>
+            <span class="talk-who"></span>
+            <span class="talk-label">Hold to talk</span>
+            <span class="talk-timer"></span>
+          </button>
+        </div>
+        <button type="button" id="rejoin" class="btn btn-solid btn-wide talk-rejoin" hidden>Tap to rejoin</button>
       </div>
     </section>
   </div>

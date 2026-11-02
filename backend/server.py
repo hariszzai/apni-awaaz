@@ -30,7 +30,7 @@ from .voices import (
 )
 
 STATIC = ROOT / "static"
-MAX_TURN_SECONDS = 55  # Prisma REST takes up to 60 s; leave a margin (SRS FR-7)
+MAX_TURN_SECONDS = 28  # Prisma REST, the fallback if streaming fails, takes up to 30 s; leave a margin (SRS FR-7)
 MAX_VOICE_BYTES = 10 * 1024 * 1024
 LIMIT_MESSAGE = "The demo has reached today's limit. Please try again tomorrow."
 
@@ -97,9 +97,10 @@ async def config():
 
 
 @app.post("/api/rooms")
-async def create_room(request: Request):
+async def create_room(request: Request, solo: bool = Body(False, embed=True)):
+    """A conversation between two phones, or (solo) two people sharing one phone."""
     check_limit(request, "room")
-    return {"room_id": app.state.rooms.create()}
+    return {"room_id": app.state.rooms.create(solo)}
 
 
 @app.post("/api/voice")

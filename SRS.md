@@ -90,7 +90,7 @@ My Voice is held back by cloned TTS itself: 2–3.8 s per sentence, even for one
 ### 5.2 Conversation room
 
 - **FR-6:** User A creates a room and gets a short link or QR code. User B opens it on their own phone.
-- **FR-7:** Each person talks with a **push-to-talk** button (hold to speak, release to send). Recording stops automatically at **55 seconds**, with a countdown in the last 10 s (Prisma REST rejects audio over 60 s).
+- **FR-7:** Each person talks with a **push-to-talk** button (hold to speak, release to send). Recording stops automatically at **28 seconds**, with a countdown in the last 10 s (Prisma REST, the fallback if streaming fails, rejects audio over 30 s since Nov 2026).
 - **FR-8:** Pipeline for every turn:
   1. Record audio in the browser
   2. Prisma STT → text in the speaker's language
