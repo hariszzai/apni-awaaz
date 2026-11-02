@@ -731,9 +731,21 @@ function guestLanguage() {
   return profile.language === "hi-IN" ? "ta-IN" : "hi-IN";
 }
 
+// ...and the Expressive voice they are heard in: by default a different one from mine
+function guestVoice() {
+  const saved = store.get("aa_guest_voice");
+  if (config.voices[saved]) return saved;
+  return Object.keys(config.voices).find((name) => name !== profile.voice);
+}
+
 $("#guest-language").addEventListener("change", (e) => {
   store.set("aa_guest_language", e.target.value);
   socket?.send(JSON.stringify({ type: "guest_language", language: e.target.value }));
+});
+
+$("#guest-voice").addEventListener("change", (e) => {
+  store.set("aa_guest_voice", e.target.value);
+  socket?.send(JSON.stringify({ type: "guest_voice", voice: e.target.value }));
 });
 
 async function joinRoom(code) {
@@ -759,7 +771,11 @@ function openRoomScreen(code, onePhone) {
   $("#room-code").textContent = code;
   $("#room-chip").hidden = solo; // nobody else joins a one-phone room
   document.body.classList.toggle("solo", solo);
-  if (solo) fillSelect($("#guest-language"), config.languages, guestLanguage());
+  if (solo) {
+    fillSelect($("#guest-language"), config.languages, guestLanguage());
+    const voices = Object.fromEntries(Object.entries(config.voices).map(([name, gender]) => [name, `${name} (${gender})`]));
+    fillSelect($("#guest-voice"), voices, guestVoice());
+  }
   show("room");
 }
 
@@ -811,7 +827,7 @@ function connect(rejoin = false) {
       voice: profile.voice,
       cloned_voice: myVoice,
       rejoin,
-      solo: solo ? { name: "Guest", language: $("#guest-language").value } : undefined,
+      solo: solo ? { name: "Guest", language: $("#guest-language").value, voice: $("#guest-voice").value } : undefined,
     }));
   };
   ws.onmessage = (event) => {
@@ -941,7 +957,7 @@ function renderRoom() {
     people.push(li);
   }
   $("#people").replaceChildren(...people);
-  $(".guest-language").hidden = !solo || Boolean(pendingRejoin);
+  for (const picker of $$(".guest-language")) picker.hidden = !solo || Boolean(pendingRejoin);
 
   const guestButton = $("#talk-guest");
   guestButton.hidden = !solo || Boolean(pendingRejoin);

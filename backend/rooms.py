@@ -6,9 +6,10 @@ Protocol (one WebSocket per person, /ws/{room_id}):
     {"type": "join", "user_id", "client_id", "name", "language", "mode",
      "voice" (Expressive voice name), "cloned_voice" (signed, kept by the browser),
      "rejoin" (optional: this tab was in the room, so recreate it if the server restarted),
-     "solo" (optional: {"name", "language"} of a guest sharing this phone)}            first message
+     "solo" (optional: {"name", "language", "voice"} of a guest sharing this phone)}   first message
     {"type": "mode", "mode": "my_voice" | "expressive"}
     {"type": "guest_language", "language"}     one-phone rooms: the guest's language changed
+    {"type": "guest_voice", "voice"}           one-phone rooms: the Expressive voice the guest is heard in
     {"type": "talk_start", "as": "guest"?}     button pressed ("as": "guest" on one phone)
     <binary>  live 16 kHz 16-bit mono PCM     while the button is held (streamed to Prisma)
     {"type": "talk_end"} | {"type": "talk_cancel"}
@@ -289,8 +290,10 @@ class RoomManager:
         if language not in LANGUAGES:
             raise ValueError("Pick the other person's language")
         name = str(solo.get("name", "")).strip()[:MAX_NAME_LENGTH] or "Guest"
-        # A different voice from the host's, so the two sides sound like two people
-        voice = next((v for v in STOCK_VOICES if v != host.voice), host.voice)
+        voice = solo.get("voice")
+        if voice not in STOCK_VOICES:
+            # A different voice from the host's, so the two sides sound like two people
+            voice = next((v for v in STOCK_VOICES if v != host.voice), host.voice)
         guest = Participant(host.ws, "g" + secrets.token_hex(4), host.user_id, host.client_id,
                             name, language, "expressive", voice, None, relay=host)
         guest.ip = host.ip
@@ -315,6 +318,9 @@ class RoomManager:
             if guest := self._guest_of(room, participant):
                 guest.language = message["language"]
                 await room.send_state()
+        elif kind == "guest_voice" and message.get("voice") in STOCK_VOICES:
+            if guest := self._guest_of(room, participant):
+                guest.voice = message["voice"]
         elif kind == "talk_start":
             speaker = self._guest_of(room, participant) if message.get("as") == "guest" else participant
             if speaker:
