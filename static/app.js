@@ -767,6 +767,8 @@ function openRoomScreen(code, onePhone) {
   participants = [];
   otherSpeaking = null;
   turns.clear();
+  replayable.length = 0;
+  incoming = null;
   $("#transcript").replaceChildren();
   $("#room-code").textContent = code;
   $("#room-chip").hidden = solo; // nobody else joins a one-phone room
@@ -833,6 +835,7 @@ function connect(rejoin = false) {
   ws.onmessage = (event) => {
     if (typeof event.data !== "string") {
       player.push(event.data);
+      incoming?.chunks.push(event.data); // kept so the turn can be replayed
       return;
     }
     handleMessage(JSON.parse(event.data));
@@ -906,16 +909,63 @@ function handleMessage(message) {
     case "audio_start":
       player.begin(message.sample_rate);
       showPlayingBadge(message.speaker_name);
+      incoming = { turnId: message.turn_id, name: message.speaker_name, rate: message.sample_rate, chunks: [] };
       break;
     case "audio_end":
-      clearTimeout(badgeTimer);
-      badgeTimer = setTimeout(() => { $("#playing-badge").hidden = true; }, player.remaining * 1000 + 300);
+      hidePlayingBadgeAfterPlayback();
+      if (incoming?.turnId === message.turn_id && incoming.chunks.length) keepForReplay(incoming);
+      incoming = null;
       break;
     case "error":
       toast(message.message);
       if (message.fatal) leaveRoom();
       break;
   }
+}
+
+function hidePlayingBadgeAfterPlayback() {
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => { $("#playing-badge").hidden = true; }, player.remaining * 1000 + 300);
+}
+
+// ---------- replay: a ▶ button beside each translation you heard ----------
+
+const REPLAY_TURNS = 40; // keep the audio of this many turns (about 400 KB each)
+let incoming = null; // the turn whose audio is arriving now
+const replayable = []; // turn ids with audio kept, oldest first
+
+function keepForReplay(audio) {
+  const turn = turns.get(audio.turnId);
+  if (!turn) return;
+  turn.audio = audio;
+  replayable.push(audio.turnId);
+  if (replayable.length > REPLAY_TURNS) {
+    const old = turns.get(replayable.shift());
+    if (old) {
+      old.audio = null;
+      old.li.querySelector(".replay")?.remove();
+    }
+  }
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "replay";
+  button.setAttribute("aria-label", "Play again");
+  button.title = "Play again";
+  button.innerHTML = '<span class="mini-play"></span>';
+  button.addEventListener("click", () => replay(turn, button));
+  turn.li.querySelector(".line").append(button);
+}
+
+function replay(turn, button) {
+  if (!turn.audio || button.classList.contains("playing")) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  // Queued behind anything still playing, so it never talks over a new turn
+  player.begin(turn.audio.rate);
+  for (const chunk of turn.audio.chunks) player.push(chunk);
+  showPlayingBadge(turn.audio.name);
+  hidePlayingBadgeAfterPlayback();
+  button.classList.add("playing");
+  setTimeout(() => button.classList.remove("playing"), player.remaining * 1000);
 }
 
 function showPlayingBadge(name) {
@@ -1025,7 +1075,7 @@ function updateTurn(turnId, data) {
   if (!turn) {
     const li = document.createElement("li");
     li.className = `turn ${data.speaker === myPid ? "mine" : "theirs"}`;
-    li.innerHTML = '<span class="who"></span><span class="main"></span><span class="sub"></span><span class="state"></span>';
+    li.innerHTML = '<span class="who"></span><span class="line"><span class="main"></span></span><span class="sub"></span><span class="state"></span>';
     $("#transcript").append(li);
     turn = { li, mine: data.speaker === myPid };
     turns.set(turnId, turn);

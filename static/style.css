@@ -1334,6 +1334,27 @@ body.solo .talk-button { height: 96px; font-size: 16px; }
 body.solo .transcript:empty::before { content: "Each person holds their own button, speaks, and lets go. The phone says it in the other language."; }
 .guest-language select { height: 30px; padding: 0 28px 0 10px; font-size: 12.5px; width: auto; }
 
+/* Replay: a small round play button just right of a translation you heard */
+.turn .line { display: flex; align-items: flex-start; gap: 10px; }
+.turn .line .main { flex: 1; min-width: 0; }
+.replay {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin-top: -2px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.replay .mini-play { margin-left: 2px; }
+.replay:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
+.replay.playing { border-color: transparent; background: var(--flow); background-size: 200% 100%; animation: flow 3s linear infinite; }
+.replay.playing .mini-play { margin-left: 0; }
+
 /* No pull-to-refresh in the room: on Android it reloads the page mid-conversation */
 html.in-room, html.in-room body { overscroll-behavior-y: none; }
 .transcript { overscroll-behavior: contain; }
